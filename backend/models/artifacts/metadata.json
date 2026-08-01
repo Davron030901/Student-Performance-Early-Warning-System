@@ -1,0 +1,154 @@
+{
+  "model_version": "xgb-v1.0",
+  "trained_at": "2026-07-29 10:18:23 UTC",
+  "checkpoint_fraction": 0.3,
+  "feature_columns": [
+    "gender",
+    "region",
+    "highest_education",
+    "imd_band",
+    "age_band",
+    "num_of_prev_attempts",
+    "studied_credits",
+    "disability",
+    "date_registration",
+    "late_registration",
+    "vle_total_clicks",
+    "vle_active_days",
+    "vle_distinct_sites",
+    "vle_click_trend",
+    "vle_days_since_last_click",
+    "n_submitted",
+    "avg_early_score",
+    "pct_on_time",
+    "avg_days_early"
+  ],
+  "model_feature_columns": [
+    "num_of_prev_attempts",
+    "studied_credits",
+    "date_registration",
+    "late_registration",
+    "vle_total_clicks",
+    "vle_active_days",
+    "vle_distinct_sites",
+    "vle_click_trend",
+    "vle_days_since_last_click",
+    "n_submitted",
+    "avg_early_score",
+    "pct_on_time",
+    "avg_days_early",
+    "gender_F",
+    "gender_M",
+    "region_East Anglian Region",
+    "region_East Midlands Region",
+    "region_London Region",
+    "region_North Western Region",
+    "region_Scotland",
+    "region_South Region",
+    "region_Wales",
+    "region_West Midlands Region",
+    "highest_education_A Level or Equivalent",
+    "highest_education_HE Qualification",
+    "highest_education_Lower Than A Level",
+    "imd_band_0-10%",
+    "imd_band_10-20%",
+    "imd_band_20-30%",
+    "imd_band_40-50%",
+    "imd_band_50-60%",
+    "imd_band_70-80%",
+    "imd_band_80-90%",
+    "imd_band_90-100%",
+    "age_band_0-35",
+    "age_band_35-55",
+    "age_band_55lt=",
+    "disability_N",
+    "disability_Y"
+  ],
+  "categorical_columns": [
+    "gender",
+    "region",
+    "highest_education",
+    "imd_band",
+    "age_band",
+    "disability"
+  ],
+  "risk_bands": {
+    "low_max": 0.33,
+    "medium_max": 0.66
+  },
+  "reference_medians": {
+    "late_registration": 0.0,
+    "vle_total_clicks": 301.0,
+    "vle_active_days": 45.0,
+    "vle_distinct_sites": 24.0,
+    "vle_click_trend": 0.03184276235014968,
+    "vle_days_since_last_click": 0.0,
+    "n_submitted": 0.0,
+    "avg_early_score": -1.0,
+    "pct_on_time": 0.0,
+    "avg_days_early": 0.0
+  },
+  "held_out_metrics": {
+    "recall": 0.7812,
+    "precision": 0.7143,
+    "f2": 0.7669,
+    "roc_auc": 0.9106,
+    "pr_auc": 0.8266,
+    "brier": 0.1181,
+    "n": 560,
+    "positive_rate": 0.3429
+  },
+  "cv_metrics": {
+    "logistic_regression_baseline": {
+      "recall": 0.8885,
+      "precision": 0.6716,
+      "f2": 0.8344,
+      "roc_auc": 0.9177,
+      "pr_auc": 0.8502,
+      "brier": 0.1225,
+      "positive_rate": 0.3417,
+      "n": 1680
+    },
+    "xgboost": {
+      "recall": 0.7892,
+      "precision": 0.705,
+      "f2": 0.7702,
+      "roc_auc": 0.9046,
+      "pr_auc": 0.8321,
+      "brier": 0.1281,
+      "positive_rate": 0.3417,
+      "n": 1680
+    },
+    "random_forest": {
+      "recall": 0.8152,
+      "precision": 0.7155,
+      "f2": 0.7925,
+      "roc_auc": 0.9148,
+      "pr_auc": 0.8426,
+      "brier": 0.115,
+      "positive_rate": 0.3417,
+      "n": 1680
+    }
+  },
+  "trivial_baseline_metrics": {
+    "recall": 0.6198,
+    "precision": 0.4075,
+    "f2": 0.5613,
+    "roc_auc": 0.5748,
+    "pr_auc": 0.3829,
+    "brier": 0.4393,
+    "n": 560,
+    "positive_rate": 0.3429
+  },
+  "confusion_matrix_held_out": [
+    [
+      308,
+      60
+    ],
+    [
+      42,
+      150
+    ]
+  ],
+  "n_training_rows": 2240
+}

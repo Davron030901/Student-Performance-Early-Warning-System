@@ -1,0 +1,16 @@
+# data is downloaded/generated, never committed
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# model artifacts are reproducible from `make train`
+models/artifacts/*.joblib
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.DS_Store
+.ipynb_checkpoints/

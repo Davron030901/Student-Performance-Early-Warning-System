@@ -1,0 +1,61 @@
+# EDU-02 Early-Warning Model — central configuration
+# Nothing in src/ should hardcode these values; everything reads from here.
+
+data:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  # OULAD-style table names (see DATASET.md)
+  tables:
+    courses: "courses.csv"
+    student_info: "studentInfo.csv"
+    student_registration: "studentRegistration.csv"
+    assessments: "assessments.csv"
+    student_assessment: "studentAssessment.csv"
+    student_vle: "studentVle.csv"
+
+prediction:
+  # Checkpoint expressed as a fraction of module-presentation length.
+  # This is the single source of truth for "how early" the warning fires.
+  checkpoint_fraction: 0.30
+  # Alternate checkpoints used for the "early enough to matter" evaluation (§3 of the brief)
+  eval_checkpoint_fractions: [0.20, 0.30, 0.50]
+
+target:
+  # final_result values in OULAD: Withdrawn, Fail, Pass, Distinction
+  at_risk_outcomes: ["Withdrawn", "Fail"]
+  not_at_risk_outcomes: ["Pass", "Distinction"]
+
+risk_bands:
+  # thresholds on the calibrated at-risk probability
+  low_max: 0.33
+  medium_max: 0.66
+  # anything above medium_max -> High
+
+model:
+  primary: "xgboost"          # xgboost | random_forest | logistic_regression
+  random_state: 42
+  n_folds: 5
+  class_weight_pos_scale: "auto"  # auto -> computed from class imbalance
+  xgboost_params:
+    n_estimators: 300
+    max_depth: 4
+    learning_rate: 0.05
+    subsample: 0.9
+    colsample_bytree: 0.9
+  random_forest_params:
+    n_estimators: 400
+    max_depth: 8
+
+fairness:
+  # which studentInfo columns to break performance out by
+  sensitive_columns: ["gender", "disability", "age_band", "region"]
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  model_version: "xgb-v1.0"
+
+paths:
+  model_artifact: "models/artifacts/model.joblib"
+  metadata_artifact: "models/artifacts/metadata.json"
+  reports_dir: "reports"

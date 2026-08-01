@@ -1,0 +1,12 @@
+services:
+  api:
+    build: .
+    container_name: edu02-early-warning-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # mount artifacts so a locally retrained model is picked up without a rebuild
+      - ./models/artifacts:/app/models/artifacts:ro
+    environment:
+      - PYTHONPATH=/app
+    restart: unless-stopped
