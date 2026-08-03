@@ -4,8 +4,12 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
-# model artifacts are reproducible from `make train`
-models/artifacts/*.joblib
+# The trained model IS committed, deliberately.
+# Render builds the image from this repo and does not run `make train` (that
+# needs the dataset, which is not committed). Without the artifact in git the
+# deployed API would start with model_loaded=false and 503 every request.
+# At ~440KB this is well within what git handles comfortably.
+# !models/artifacts/model.joblib
 
 __pycache__/
 *.py[cod]

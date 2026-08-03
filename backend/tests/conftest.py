@@ -1,5 +1,6 @@
 import yaml
 import pytest
+from pathlib import Path
 from src.data.ingest import load_raw_tables
 
 
@@ -10,6 +11,20 @@ def config():
 
 @pytest.fixture(scope="session")
 def raw(config):
+    """Loads the raw tables, failing with an actionable message if the dataset
+    has not been generated yet. Without this, a fresh clone running `make test`
+    gets a wall of pandas FileNotFoundError tracebacks that don't say what to
+    do about it."""
+    raw_dir = Path(config["data"]["raw_dir"])
+    expected = raw_dir / config["data"]["tables"]["student_info"]
+    if not expected.exists():
+        pytest.fail(
+            f"\n\nDataset not found at {expected}.\n"
+            "The data tests need the raw tables. Generate them first:\n\n"
+            "    make data       (or: python -m src.data.generate_synthetic_oulad)\n\n"
+            "To use the real OULAD data instead, see DATASET.md.\n",
+            pytrace=False,
+        )
     return load_raw_tables(config)
 
 

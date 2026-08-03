@@ -9,7 +9,19 @@ import { StudentDetailPage } from "@/features/student-detail/StudentDetailPage";
 import "./index.css";
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+  defaultOptions: {
+    queries: {
+      // Render's free instance sleeps after ~15 minutes idle and takes roughly
+      // 50 seconds to wake. Without generous retries, the first visit after a
+      // quiet period shows an error page even though nothing is broken. Three
+      // attempts with backoff covers a cold start; genuine failures still
+      // surface, just a little later.
+      retry: 3,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 15000),
+      refetchOnWindowFocus: false,
+      staleTime: 30_000,
+    },
+  },
 });
 
 const router = createBrowserRouter([

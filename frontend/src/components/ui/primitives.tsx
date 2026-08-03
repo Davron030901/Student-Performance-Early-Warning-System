@@ -124,6 +124,10 @@ export function ErrorState({ onRetry, what = "this view" }: { onRetry: () => voi
         <p className="mt-1 max-w-sm text-sm text-ink-muted">
           The prediction service didn't respond. Your filters are still set — retrying will keep them.
         </p>
+        <p className="mt-2 max-w-sm text-xs text-ink-muted/80">
+          On a free hosting plan the service sleeps when unused and can take up to a minute to wake.
+          If this is the first visit in a while, waiting a moment and retrying usually works.
+        </p>
       </div>
       <Button variant="ghost" onClick={onRetry}>
         <RefreshCw size={15} aria-hidden /> Try again

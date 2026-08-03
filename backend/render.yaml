@@ -1,0 +1,23 @@
+# Render Blueprint. With this file in the repo you can use
+# "New → Blueprint" instead of filling in the dashboard by hand.
+#
+# rootDir matters: this is a monorepo and Render must build from backend/,
+# otherwise it will not find the Dockerfile.
+
+services:
+  - type: web
+    name: edu02-early-warning-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: frankfurt          # pick the region nearest your users
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      # Set this to your real Vercel domain after the first frontend deploy.
+      # Preview deployments are matched by regex in the app and need no entry here.
+      - key: CORS_ALLOW_ORIGINS
+        value: https://REPLACE-ME.vercel.app
+      - key: PYTHONUNBUFFERED
+        value: "1"

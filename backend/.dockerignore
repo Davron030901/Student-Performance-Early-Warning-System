@@ -6,3 +6,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+venv/
+.git/
+.gitignore
+*.md
+Makefile
+docker-compose.yml
+requirements.txt

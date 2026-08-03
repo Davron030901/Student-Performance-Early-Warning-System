@@ -6,6 +6,7 @@ Run in Docker: see Dockerfile / docker-compose.yml
 """
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -26,16 +27,22 @@ from src.models.explain import top_factors_for_student
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("edu02-api")
 
+# Resolve paths from the project root rather than the current working
+# directory, so the app starts identically under uvicorn locally, in
+# Docker (WORKDIR /app), and under Render's process manager.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
+
 _state = {"model": None, "metadata": None, "explainer": None, "config": None}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load the model artifact ONCE at startup, not per-request."""
-    config = yaml.safe_load(open("config/config.yaml"))
+    config = yaml.safe_load(open(CONFIG_PATH))
     _state["config"] = config
-    model_path = Path(config["paths"]["model_artifact"])
-    metadata_path = Path(config["paths"]["metadata_artifact"])
+    model_path = PROJECT_ROOT / config["paths"]["model_artifact"]
+    metadata_path = PROJECT_ROOT / config["paths"]["metadata_artifact"]
 
     if model_path.exists() and metadata_path.exists():
         _state["model"] = joblib.load(model_path)
@@ -58,12 +65,29 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# The dashboard (frontend/) runs on a different origin in development.
+# Allowed browser origins.
+#
+# Render injects no origin config of its own, so this comes from the
+# CORS_ALLOW_ORIGINS env var: a comma-separated list, e.g.
+#   CORS_ALLOW_ORIGINS=https://course-signals.vercel.app,https://www.example.edu
+#
+# Vercel gives every deployment a unique preview URL, so preview builds are
+# matched by regex rather than listed one by one. Note that allow_credentials
+# is False: this API has no cookies or auth, and pairing credentials with a
+# permissive origin regex is exactly the combination that turns CORS into a
+# real vulnerability.
+_origins_env = os.getenv("CORS_ALLOW_ORIGINS", "")
+_allow_origins = [o.strip() for o in _origins_env.split(",") if o.strip()] or [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=_allow_origins,
+    allow_origin_regex=os.getenv("CORS_ALLOW_ORIGIN_REGEX") or r"https://.*\.vercel\.app",
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 

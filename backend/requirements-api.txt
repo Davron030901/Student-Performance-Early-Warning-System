@@ -1,0 +1,19 @@
+# Runtime-only dependencies for the deployed API.
+#
+# The full requirements.txt also pulls in matplotlib, scikit-learn's plotting
+# path and pytest, which are needed to TRAIN and evaluate but never to SERVE.
+# Render's free tier gives 512MB RAM, and shap + xgboost + matplotlib together
+# push the image and the resident footprint uncomfortably close to that, so the
+# deployment installs this narrower set instead.
+#
+# scikit-learn stays: joblib unpickles the model against it.
+pandas==3.0.2
+numpy==2.4.4
+scikit-learn==1.8.0
+xgboost==3.3.0
+shap==0.52.0
+fastapi==0.140.13
+uvicorn[standard]==0.51.0
+pydantic==2.13.4
+PyYAML==6.0.3
+joblib==1.5.3
