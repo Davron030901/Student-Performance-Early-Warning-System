@@ -53,3 +53,26 @@ def sample_student_payload():
         "pct_on_time": 0,
         "avg_days_early": 0,
     }
+
+
+@pytest.fixture(scope="session")
+def dataset(raw, config):
+    """Built once and shared. build_dataset scans ~1M VLE rows, so rebuilding it
+    per-test turns the suite from seconds into minutes."""
+    from src.data.pipeline import build_dataset
+    X, y, feature_columns, meta = build_dataset(raw, config)
+    return {"X": X, "y": y, "feature_columns": feature_columns, "meta": meta}
+
+
+@pytest.fixture(scope="session")
+def encoded_dataset(dataset):
+    from src.models.encoding import encode_features
+    X_enc, cols = encode_features(dataset["X"], dataset["feature_columns"])
+    return {"X_enc": X_enc, "columns": cols, "y": dataset["y"]}
+
+
+@pytest.fixture(scope="session")
+def metadata():
+    """The shipped model metadata — what the API actually serves from."""
+    import json
+    return json.load(open("models/artifacts/metadata.json"))

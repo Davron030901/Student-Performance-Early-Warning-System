@@ -6,8 +6,10 @@ using only information that would genuinely be available at that point.
 
 ```
 edu02/
-├── backend/     ML pipeline + FastAPI service   (Python)
-└── frontend/    Advisor dashboard               (React + TypeScript)
+├── backend/       ML pipeline + FastAPI service   (Python)
+├── frontend/      Advisor dashboard               (React + TypeScript)
+├── DEPLOY.md      Render+Vercel, or Vercel alone
+└── vercel.json    Only used for the all-on-Vercel option — see DEPLOY.md
 ```
 
 ## Run it
@@ -67,6 +69,21 @@ and tested rather than asserted:
 - Five tests that check it against the raw data, including an independent
   recomputation that would catch a bug inside the cutoff function itself.
 
+## Tests
+
+```bash
+cd backend  && make test     # 235 tests (+2 opt-in), 85% coverage
+cd frontend && npm test      # 41 tests
+```
+
+276 tests in total. The ones that carry weight: the checkpoint cutoff is
+verified against the raw data with an independent recomputation; SHAP
+explanations are checked to reconstruct the model's own output, so they are
+faithful rather than decorative; more engagement is asserted never to raise a
+student's risk, through the live API; and the deployment tests confirm the
+service returns a clear 503 — rather than inventing predictions — if the
+container ever ships without the model artifact.
+
 ## Honest scope
 
 - The shipped dataset is **synthetic but schema-identical to OULAD**, because the
@@ -89,4 +106,4 @@ and tested rather than asserted:
 | [`backend/LIMITATIONS.md`](backend/LIMITATIONS.md) | Leakage controls, fairness findings, risks |
 | [`frontend/README.md`](frontend/README.md) | Setup, screens, connecting the API |
 | [`frontend/DESIGN.md`](frontend/DESIGN.md) | Palette, type, the ribbon, language |
-| [`DEPLOY.md`](DEPLOY.md) | Deploying backend to Render, frontend to Vercel |
+| [`DEPLOY.md`](DEPLOY.md) | Deploying to Render + Vercel, or everything on Vercel alone |

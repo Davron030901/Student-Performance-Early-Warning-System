@@ -23,6 +23,7 @@ configure to see a fully populated dashboard.
 npm run build        # type-check + production build
 npm run preview      # serve the build
 npm run lint         # tsc --noEmit
+npm test             # 41 unit tests (vitest)
 ```
 
 ## Screens
@@ -111,6 +112,15 @@ src/
 
 Palette, type pairing, the ribbon rationale and the language choices are
 documented in [DESIGN.md](DESIGN.md).
+
+## Testing
+
+`npm test` runs 41 unit tests over the data layer — pagination that neither
+drops nor duplicates a student, filters that combine rather than override,
+search, sorting, and the invariants the UI depends on: that a risk score always
+matches the band shown beside it, that the detail page never contradicts the row
+clicked to reach it, that `totalClicks` counts only pre-checkpoint activity, and
+that no explanation ever names a demographic.
 
 ## Verified
 

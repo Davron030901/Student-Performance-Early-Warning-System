@@ -7,10 +7,19 @@
 # deployment installs this narrower set instead.
 #
 # scikit-learn stays: joblib unpickles the model against it.
+#
+# xgboost-cpu instead of xgboost: the regular `xgboost` PyPI wheel
+# unconditionally depends on nvidia-nccl-cu12 (~400MB) for multi-GPU training
+# support this project never uses — CPU inference on an already-trained model
+# never touches that code path. xgboost-cpu is the same library built without
+# it: same import name (`import xgboost`), same API, loads this project's
+# model.joblib without any changes. Verified: installed size drops from ~1.2GB
+# to ~620MB, and predict_proba()/SHAP output are identical on the shipped
+# artifact. Needs scikit-learn present (already required above).
 pandas==3.0.2
 numpy==2.4.4
 scikit-learn==1.8.0
-xgboost==3.3.0
+xgboost-cpu==3.3.0
 shap==0.52.0
 fastapi==0.140.13
 uvicorn[standard]==0.51.0

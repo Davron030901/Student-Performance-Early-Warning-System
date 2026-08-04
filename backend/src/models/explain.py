@@ -14,9 +14,15 @@ demographics; the explanation surface just doesn't foreground them.
 import numpy as np
 import pandas as pd
 import shap
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+# matplotlib is intentionally NOT imported at module level. This module is
+# imported by src/api/main.py (for top_factors_for_student, used on every
+# prediction), and the deployed API installs requirements-api.txt, which
+# excludes matplotlib on purpose — it's only needed for the training-time
+# report plot below. A top-level `import matplotlib` here would make the API
+# fail at startup in any environment that installed the runtime-only
+# requirements, which is exactly the environment it actually deploys into.
+# This was caught by testing against a venv built strictly from
+# requirements-api.txt rather than the ambient dev environment.
 
 # Only these engineered features are eligible to appear in a per-student explanation.
 BEHAVIORAL_FEATURES = {
@@ -106,6 +112,13 @@ def compute_shap_values(model, X_transformed: pd.DataFrame):
 
 
 def save_global_importance_plot(shap_values: np.ndarray, X_transformed: pd.DataFrame, out_path: str):
+    """Training/reporting only — never called from the API. Imported lazily so
+    this module stays importable in the runtime-only deployment environment,
+    which does not install matplotlib."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
     plt.figure()
     shap.summary_plot(shap_values, X_transformed, plot_type="bar", show=False)
     plt.tight_layout()

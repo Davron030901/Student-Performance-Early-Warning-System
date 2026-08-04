@@ -17,7 +17,7 @@ pip install -r requirements.txt
 
 make data     # generate the OULAD-schema dataset into data/raw/
 make train    # build features, train baselines + model, write reports/ + artifact
-make test     # 22 tests, including the leakage suite
+make test     # 235 tests (+2 opt-in slow); see Testing below
 make api      # serve on http://localhost:8000
 ```
 
@@ -165,10 +165,41 @@ backend/
 │   │   ├── explain.py                    # SHAP → plain-language factors
 │   │   └── fairness.py                   # per-group recall/precision
 │   └── api/                              # FastAPI service
-├── tests/                                # 22 tests: leakage, features, API
+├── tests/                                # 235 tests: leakage, features, models, API, deploy
 ├── reports/                              # generated metrics and plots
 └── models/artifacts/                     # model.joblib + metadata.json
 ```
+
+## Testing
+
+```bash
+make test                  # 235 tests, ~2 min
+pytest -m slow             # + 2 full-training integration tests, ~1 min
+pytest --cov=src           # coverage report
+```
+
+| Area | What it covers |
+|---|---|
+| `test_leakage.py` | The checkpoint cutoff, verified against the raw CSVs including an independent recomputation |
+| `test_features.py` | Feature engineering, sentinels, checkpoint monotonicity |
+| `test_train.py` | Metrics, baselines, risk banding, CV determinism, held-out split integrity |
+| `test_explain.py` | Every phrase branch, and the contradiction class of bug in both directions |
+| `test_fairness_and_encoding.py` | Group metrics, and the train/inference column-alignment contract |
+| `test_data_generation.py` | OULAD schema fidelity, referential integrity, that the data carries real signal |
+| `test_api.py` | All four endpoints: contracts, determinism, monotonicity, batch, every validation rule |
+| `test_deployment.py` | 503 when the artifact is missing, CORS allow/deny, Docker and Render/Vercel config |
+| `test_shap_and_errors.py` | SHAP additivity against the real model, checkpoint sweep, internal error handling |
+
+Coverage is 85%. The uncovered remainder is almost entirely `train.main()`, the
+orchestration script, which the opt-in `-m slow` tests exercise end to end.
+
+Two properties are worth calling out because they are what stop this from being
+theatre:
+
+- **SHAP additivity** — explanations are checked to reconstruct the model's raw
+  output, so they are faithful rather than decorative.
+- **Monotonicity** — piling on good signals must never raise a student's risk,
+  asserted through the live API.
 
 ## Reproducing
 

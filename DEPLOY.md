@@ -1,22 +1,27 @@
 # Deployment
 
-Backend → **Render** (Docker). Frontend → **Vercel**.
+Two real options, both included in this repo:
 
-Deploy the backend first: the frontend needs its URL, and the backend needs the
-frontend's domain for CORS. That circularity is unavoidable, so the order is
-backend → frontend → come back and set one backend variable.
+- **Option A — Render + Vercel** (two platforms, two domains, CORS between them). Proven, simple, works today. Documented first below.
+- **Option B — everything on Vercel** (one project, one domain, no CORS). Possible since Vercel added native Dockerfile/container support on June 30, 2026 — genuinely new, covered after Option A with the caveats that come with something this recent.
+
+If you don't already have a reason to prefer one, skip to the comparison table at the top of Option B and decide from there.
 
 ---
 
 ## Before you start
 
+These two steps apply whichever option you pick below — both build a container
+from your Git repository rather than running training themselves.
+
 ### 1. Commit the trained model
 
-This is the step most likely to bite you. Render builds the image from your Git
-repository and **does not run training** — training needs the dataset, which is
-deliberately not committed. If `models/artifacts/model.joblib` is missing from
-Git, the container starts fine, answers `/api/v1/health` with
-`"model_loaded": false`, and returns **503 on every prediction**.
+This is the step most likely to bite you. The platform builds the image from
+your Git repository and **does not run training** — training needs the
+dataset, which is deliberately not committed. If
+`models/artifacts/model.joblib` is missing from Git, the container starts
+fine, answers `/api/v1/health` with `"model_loaded": false`, and returns
+**503 on every prediction**.
 
 ```bash
 cd backend
@@ -39,21 +44,21 @@ git ls-files models/artifacts/
 
 ### 2. Push to GitHub
 
-Render and Vercel both deploy from a Git remote. Push the whole monorepo
-(`backend/` and `frontend/` together) — both platforms are told which
-subdirectory to build.
+Both options deploy from a Git remote. Push the whole monorepo (`backend/` and
+`frontend/` together) — the platform is told which subdirectory (or, for
+Option B, that the repo root) to build from.
 
 ---
 
-## Backend → Render
+## Option A, step 1: Backend → Render
 
-### Option A — Blueprint (recommended)
+### Blueprint (recommended)
 
 `backend/render.yaml` is included. In Render: **New → Blueprint**, pick the
 repo, and it reads the file. Edit `CORS_ALLOW_ORIGINS` after the frontend
 exists.
 
-### Option B — by hand
+### Or set it up by hand
 
 **New → Web Service**, connect the repo, then:
 
@@ -113,7 +118,7 @@ Interactive docs are live at `https://YOUR-SERVICE.onrender.com/docs`.
 
 ---
 
-## Frontend → Vercel
+## Option A, step 2: Frontend → Vercel
 
 **Add New → Project**, import the repo, then:
 
@@ -151,7 +156,7 @@ chance to resolve it.
 
 ---
 
-## Close the loop
+## Option A, step 3: Close the loop
 
 Back in Render → your service → **Environment**, set:
 
@@ -165,7 +170,7 @@ anything useful in the UI.
 
 ---
 
-## Free-tier sleeping
+## Option A: free-tier sleeping
 
 Render's free instance **spins down after ~15 minutes of inactivity** and takes
 roughly **50 seconds** to wake. The first request after a quiet period will hang
@@ -182,9 +187,178 @@ upgrade to Render's Starter plan (no sleeping) or deploy the frontend with
 Note that external ping services to keep a free instance awake are against
 Render's terms; upgrading is the honest fix.
 
+
+---
+
+# Option B: everything on Vercel
+
+Vercel added the ability to deploy a Dockerfile as a genuine long-running
+container (not the old 250MB zip-based Python function) on **June 30, 2026**.
+Combined with **Services** — multiple apps in one Vercel project on one domain
+— this means the backend's existing Dockerfile and the frontend can now both
+live on Vercel, with no CORS configuration at all, since they share an origin.
+
+This is covered in full because the user asked for it directly, but be clear
+about what it is: **a genuinely new feature, about five weeks old at the time
+of writing.** Treat the rest of this section as "this is how it's documented to
+work and how the pieces verified locally," not as a platform with years of
+production mileage behind it.
+
+## Option A vs. Option B
+
+| | A: Render + Vercel | B: everything on Vercel |
+|---|---|---|
+| Domains | Two | One |
+| CORS | Required, configured | **Not needed** — same origin |
+| Platforms to manage | Two | One |
+| Backend billing | Free tier (sleeps) or paid, flat | Active CPU (pay for compute time actually used) |
+| Maturity | Both platforms' core product | Container support is ~5 weeks old |
+| Cold starts | Yes, on Render's free tier | Fluid Compute scales to zero too; behaviour under real traffic is less documented |
+
+Reasonable defaults: **Option A** if this needs to be reliable *today* with the
+least uncertainty. **Option B** if a single domain and no CORS wiring is worth
+being an early adopter of a very new capability — or if you're doing this partly
+to see how it works.
+
+## Option B: what had to be fixed to make this fit
+
+Two real problems came out of actually testing this, not just reading the
+Vercel docs — worth knowing regardless of which option you pick.
+
+**1. The runtime dependency image was accidentally 1.2GB.** Measuring it
+directly: `xgboost`'s regular PyPI wheel pulls in `nvidia-nccl-cu12` — a
+~400MB multi-GPU training library this project's CPU-only inference never
+touches. Swapping to the `xgboost-cpu` package (same import name, same API,
+verified against this project's actual trained `model.joblib`) drops the
+installed footprint to **~620MB** with identical prediction output. This is
+already applied in `backend/requirements-api.txt`.
+
+**2. The API failed to start under its own declared runtime dependencies.**
+`src/models/explain.py` imported `matplotlib` at module level for a
+training-only plotting function, and the API imports that module for every
+prediction's explanation. `requirements-api.txt` deliberately excludes
+matplotlib (it's training-only) — so the deployed API would have crashed on
+startup. This had gone unnoticed because the ambient development environment
+happened to already have matplotlib installed, masking it. It's fixed: the
+`matplotlib` import is now lazy, inside the one function that needs it, and
+`tests/test_deployment.py` has two regression tests — a static check that the
+import never returns to module level, and a test that builds a venv from
+`requirements-api.txt` alone and confirms the API actually starts and predicts.
+This fix benefits Option A too.
+
+## Option B: structure
+
+One Vercel project at the **repository root** (`edu02/`, not `edu02/backend` or
+`edu02/frontend`), with a single `vercel.json`:
+
+```json
+{
+  "services": {
+    "frontend": { "root": "frontend/" },
+    "backend": { "runtime": "container", "root": "backend/", "entrypoint": "Dockerfile" }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": { "service": "backend" } },
+    { "source": "/(.*)", "destination": { "service": "frontend" } }
+  ]
+}
+```
+
+This file is already in the repo at `edu02/vercel.json`. Notes on it:
+
+- **`frontend`** has no `runtime` set, so Vercel auto-detects it as a Vite app
+  and builds it as a normal static site — no Dockerfile needed for the frontend.
+- **`backend`** uses `"runtime": "container"` and points `entrypoint` at the
+  **same `backend/Dockerfile`** already written for Render. Nothing was
+  duplicated for Vercel; one Dockerfile serves both platforms.
+- The **rewrites are what remove CORS from the picture**: `/api/*` is proxied
+  to the backend service, everything else to the frontend, both under one
+  domain. The browser only ever talks to its own origin.
+
+## Option B: steps
+
+**1. Import the repo as one project**, with **Root Directory left as the repo
+root** — do *not* set it to `backend` or `frontend` the way Option A does. Root
+must be the directory containing `vercel.json`, or Vercel won't see the
+services definition.
+
+**2. Set the backend's port.** The Dockerfile defaults to port 8000
+(`ENV PORT=8000`), and its `CMD` binds to whatever `$PORT` is set to. Vercel's
+container routing defaults to port 80 unless told otherwise, so in the Vercel
+dashboard, set an environment variable scoped to the **backend service**:
+
+```
+PORT = 8000
+```
+
+**3. Set the frontend's build-time variables**, scoped to the **frontend
+service**, for Production, Preview and Development:
+
+```
+VITE_API_BASE_URL =
+VITE_USE_MOCK = false
+```
+
+`VITE_API_BASE_URL` is set to **empty, not omitted** — an unset variable falls
+back to `http://localhost:8000` (see `client.ts`), while an explicit empty
+string resolves every request as a relative `/api/v1/...` path against
+whatever origin served the page. This was checked in a real browser against a
+built bundle, watching actual outgoing requests, not just read from the source:
+with the variable empty, requests went to `<origin>/api/v1/...`; with it unset,
+they went to `localhost:8000`.
+
+**4. Deploy.** Vercel builds both services, wires the rewrites, and serves both
+from one domain.
+
+## Option B: verify
+
+```bash
+curl https://YOUR-PROJECT.vercel.app/api/v1/health
+# {"status":"ok","model_loaded":true}
+```
+
+If this 404s instead of reaching the backend, the rewrite isn't matching —
+double check Root Directory is the repo root and `vercel.json` deployed with it
+(`vercel.json` at the repo root is picked up automatically; it does not need to
+be referenced anywhere).
+
+Open `https://YOUR-PROJECT.vercel.app/` and confirm the dashboard loads real
+data (not the seeded mock cohort) — that confirms `VITE_USE_MOCK=false` took
+and the relative-path request actually reached the backend service.
+
+## Option B: what to watch for, since this is new
+
+- **Billing model is different.** Render/Option A's free tier is flat (sleeps,
+  but $0). Option B's backend runs on Fluid Compute's Active CPU pricing —
+  billed for compute time actually used, not wall-clock uptime. For a
+  low-traffic demo this is likely cheap, but it is a different mental model
+  than "free tier," and worth checking current Vercel pricing before relying
+  on it.
+- **The 250MB/500MB Python function size limits are documented as not applying
+  the same way to container images**, which is why this fits at all at ~620MB
+  — but this project did not have a live Vercel account to push a real deploy
+  against and confirm that boundary empirically. If a deploy fails on image
+  size, that's the first thing to check against Vercel's current docs.
+- **`vercel dev` can run this locally** (requires the Docker CLI/daemon on your
+  machine) if you want to test the combined setup before pushing.
+- **Deep-link routing inside the frontend service is the one piece not verified
+  end-to-end here.** `frontend/vercel.json` has its own rewrite so refreshing on
+  `/students/S-10436` returns `index.html` instead of a 404 — that's confirmed
+  working for Option A, where `frontend/` is its own top-level Vercel project.
+  Under Option B, `frontend/` becomes a *service* inside the root project
+  instead, and whether Vercel still picks up a `vercel.json` sitting inside a
+  service's own directory isn't something the available documentation states
+  plainly, and there was no live Vercel account here to push a real deploy and
+  check. **Test this specifically after deploying**: open the dashboard,
+  navigate to a student, and refresh the page. If it 404s, the fix is almost
+  certainly moving that rewrite rule into the root `vercel.json`'s `rewrites`
+  array, ordered after the `/api/*` rule and before the catch-all.
+
 ---
 
 ## Troubleshooting
+
+**Option A (Render + Vercel):**
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -197,9 +371,21 @@ Render's terms; upgrading is the honest fix.
 | First load after idle fails | Free-tier cold start | Wait ~50s and retry; upgrade for demos |
 | Out-of-memory during build/boot | Free tier is 512 MB | The image already installs `requirements-api.txt` (no matplotlib/pytest); check nothing re-added them |
 
-To debug anything else, Render's **Logs** tab shows container stdout. The app
-logs the loaded model version and training date at startup, which is the fastest
-way to confirm the right artifact shipped.
+**Option B (everything on Vercel):**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `vercel.json` seemingly ignored, 404 on everything | Root Directory set to `backend` or `frontend` instead of the repo root | Root Directory must be the directory containing `vercel.json` — the repo root |
+| `/api/*` requests 404 or hit the frontend | Rewrite order or service names don't match `vercel.json` | Confirm the `backend`/`frontend` keys under `services` match what the rewrites reference |
+| Dashboard loads but shows the seeded demo cohort | `VITE_API_BASE_URL` unset (falls back to `localhost:8000`) rather than explicitly empty | Set it to an **empty string**, not omitted, scoped to the frontend service |
+| Backend container won't respond / times out | `PORT` env var not set on the backend service | Set `PORT=8000` on the backend service to match the Dockerfile's default |
+| Build fails on image size | Container image over the platform's current limit | Confirm `requirements-api.txt` still uses `xgboost-cpu`, not `xgboost`; check Vercel's current container size limits, since this is a new feature and limits may change |
+| `vercel dev` won't start the backend locally | Docker not running | Container services need a local Docker daemon for `vercel dev`; not required for pushing to Vercel itself |
+
+To debug anything else, Render's **Logs** tab (Option A) or Vercel's **Logs**
+tab (Option B) shows container stdout. The app logs the loaded model version
+and training date at startup, which is the fastest way to confirm the right
+artifact shipped.
 
 ---
 
