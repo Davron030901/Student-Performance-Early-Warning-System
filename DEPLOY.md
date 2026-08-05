@@ -14,7 +14,7 @@ If you don't already have a reason to prefer one, skip to the comparison table a
 These two steps apply whichever option you pick below — both build a container
 from your Git repository rather than running training themselves.
 
-### 1. Commit the trained model
+### 1. Commit the trained model and the cohort
 
 This is the step most likely to bite you. The platform builds the image from
 your Git repository and **does not run training** — training needs the
@@ -25,21 +25,30 @@ fine, answers `/api/v1/health` with `"model_loaded": false`, and returns
 
 ```bash
 cd backend
-make data && make train                     # produces the artifact locally
+make data && make train                     # trains, then builds the cohort
 
-git add -f models/artifacts/model.joblib models/artifacts/metadata.json
-git commit -m "Add trained model artifact for deployment"
+git add -f models/artifacts/model.joblib \
+           models/artifacts/metadata.json \
+           models/artifacts/demo_cohort.json
+git commit -m "Add trained model and cohort artifacts for deployment"
 ```
 
-`-f` is needed because `.gitignore` still lists the pattern. Both files are
-required — `metadata.json` carries the feature column order and the reference
-medians the explanations depend on. Together they are about 440 KB.
+`-f` is needed because `.gitignore` still lists the pattern. All three files
+are required:
+
+| File | Why it's needed | Symptom if missing |
+|---|---|---|
+| `model.joblib` | The trained model | `/health` reports `model_loaded: false`; every prediction 503s |
+| `metadata.json` | Feature column order and the reference medians explanations depend on | Same as above — the API won't load the model without it |
+| `demo_cohort.json` | The roster the dashboard reads | `/api/v1/students`, `/overview` and `/courses` return 503; the dashboard shows "Couldn't load the overview" |
+
+Together they are about 590 KB.
 
 Verify before pushing:
 
 ```bash
 git ls-files models/artifacts/
-# must list BOTH model.joblib and metadata.json
+# must list model.joblib, metadata.json AND demo_cohort.json
 ```
 
 ### 2. Push to GitHub
@@ -363,7 +372,8 @@ and the relative-path request actually reached the backend service.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Build fails, "Dockerfile not found" | Root Directory not set | Set it to `backend` |
-| `"model_loaded": false`, predictions 503 | Artifact not in Git | `git add -f models/artifacts/*` and redeploy |
+| `"model_loaded": false`, predictions 503 | Model artifact not in Git | `git add -f models/artifacts/*` and redeploy |
+| Dashboard shows "Couldn't load the overview"; logs show `404` or `503` on `/api/v1/overview` and `/api/v1/students` | `demo_cohort.json` not committed, or an older image predating the cohort endpoints | `make cohort`, `git add -f models/artifacts/demo_cohort.json`, redeploy |
 | Health check fails, container "unhealthy" | Bound to the wrong port | Do not set `PORT`; let Render inject it |
 | Dashboard loads, all data fails; console shows CORS | `CORS_ALLOW_ORIGINS` unset or has a trailing slash | Set the exact origin, no trailing slash |
 | Refreshing `/students/S-1` gives 404 | SPA rewrite missing | Ensure `frontend/vercel.json` is committed |

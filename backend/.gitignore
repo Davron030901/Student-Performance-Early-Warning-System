@@ -9,7 +9,12 @@ data/processed/*
 # needs the dataset, which is not committed). Without the artifact in git the
 # deployed API would start with model_loaded=false and 503 every request.
 # At ~440KB this is well within what git handles comfortably.
+#
+# The same applies to models/artifacts/demo_cohort.json — the roster the
+# dashboard reads. Without it in the image, /api/v1/students and
+# /api/v1/overview return 503 and the dashboard shows its error state.
 # !models/artifacts/model.joblib
+# !models/artifacts/demo_cohort.json
 
 __pycache__/
 *.py[cod]

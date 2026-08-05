@@ -45,7 +45,13 @@ export function StudentDetailPage() {
                   className="nums font-display text-display-lg font-bold leading-none"
                   style={{ color: riskColor(s.riskBand) }}
                 >
-                  {Math.round(s.riskScore * 100)}
+                  {/* Clamped to 1–99. A model with ~78% recall has no business
+                      telling an advisor a student has a "100% chance of not
+                      passing" — that is a claim of certainty about a person
+                      that the evidence cannot support, and it invites treating
+                      the score as a verdict rather than a prompt to look. The
+                      same applies at the bottom: "0%" would read as a guarantee. */}
+                  {Math.min(99, Math.max(1, Math.round(s.riskScore * 100)))}
                   <span className="text-2xl">%</span>
                 </p>
                 <p className="mt-1 text-xs text-ink-muted">estimated chance of not passing</p>

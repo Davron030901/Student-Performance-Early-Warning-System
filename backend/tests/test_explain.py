@@ -47,7 +47,7 @@ def classify(phrase: str) -> str:
     ]
     safe_markers = [
         "strong engagement", "consistent activity", "wide range", "holding up",
-        "recently active", "submitted the early", "above average",
+        "recently active", "has submitted early assessment", "above average",
         "on-time submissions", "comfortably ahead", "on time",
     ]
     low = phrase.lower()
@@ -94,17 +94,22 @@ def classify(phrase: str) -> str:
     ("vle_distinct_sites", 30, SAFE),
 ])
 def test_phrase_direction_follows_the_value(feature, value, expected):
-    phrase = _phrase(feature, value, REFERENCE)
-    assert phrase is not None
+    result = _phrase(feature, value, REFERENCE)
+    assert result is not None
+    phrase, raises_risk = result
     assert classify(phrase) == expected, f"{feature}={value} produced {phrase!r}"
+    # the flag must agree with the wording — they are chosen together precisely
+    # so a caller can never pair a "concerning" sentence with a reassuring arrow
+    assert raises_risk == (expected == RISKY), f"{feature}={value}: flag disagrees with wording"
 
 
 def test_no_submission_sentinel_is_never_reported_as_a_low_score():
     """avg_early_score uses -1 to mean 'nothing submitted yet'. Reporting that
     as a bad mark would be factually false about the student."""
-    phrase = _phrase("avg_early_score", -1, REFERENCE)
+    phrase, raises_risk = _phrase("avg_early_score", -1, REFERENCE)
     assert "below average" not in phrase.lower()
     assert "no assessment submitted yet" in phrase.lower()
+    assert raises_risk is True
 
 
 def test_phrase_declines_to_guess_without_a_reference():
@@ -121,9 +126,10 @@ def test_every_behavioural_feature_has_a_template():
     """Guards against a new feature silently rendering as its raw column name
     (e.g. 'vle_click_trend') in front of an advisor."""
     for feature in BEHAVIORAL_FEATURES:
-        phrase = _phrase(feature, 1.0, REFERENCE)
-        if phrase is None:
+        result = _phrase(feature, 1.0, REFERENCE)
+        if result is None:
             continue
+        phrase, _raises = result
         assert phrase != feature, f"{feature} has no human-readable template"
         assert " " in phrase, f"{feature} rendered as a bare token: {phrase!r}"
 

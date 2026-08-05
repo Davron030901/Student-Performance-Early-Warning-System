@@ -23,7 +23,7 @@ configure to see a fully populated dashboard.
 npm run build        # type-check + production build
 npm run preview      # serve the build
 npm run lint         # tsc --noEmit
-npm test             # 41 unit tests (vitest)
+npm test             # 44 unit tests (vitest)
 ```
 
 ## Screens
@@ -57,11 +57,15 @@ The client already maps the backend's snake_case (`model_version`,
 `checkpoint_fraction`) to the camelCase the UI uses. The backend enables CORS for
 `localhost:5173`.
 
-Two endpoints the dashboard wants are not in the backend yet —
-`GET /api/v1/students` and `GET /api/v1/students/{id}` — because the backend
-scores a supplied feature payload rather than storing a cohort. Adding a thin
-roster store, or having the frontend batch through `POST /api/v1/predict/batch`,
-closes the gap. `GET /api/v1/model/info` is live and already wired.
+Every endpoint the dashboard calls now exists in the backend:
+`/api/v1/courses`, `/api/v1/students`, `/api/v1/students/{id}`,
+`/api/v1/overview` and `/api/v1/model/info`. The roster endpoints are served
+from a pre-computed cohort artifact (`backend/models/artifacts/demo_cohort.json`,
+built by `make cohort`): real held-out students, scored by the real model and
+explained through the same SHAP path as `/predict`, with fictional names
+because OULAD is anonymised. In a real deployment that artifact is where an
+institutional student database would be queried instead — the response shapes
+would not change.
 
 ## Mock data
 
@@ -115,7 +119,7 @@ documented in [DESIGN.md](DESIGN.md).
 
 ## Testing
 
-`npm test` runs 41 unit tests over the data layer — pagination that neither
+`npm test` runs 44 unit tests over the data layer — pagination that neither
 drops nor duplicates a student, filters that combine rather than override,
 search, sorting, and the invariants the UI depends on: that a risk score always
 matches the band shown beside it, that the detail page never contradicts the row

@@ -72,11 +72,11 @@ and tested rather than asserted:
 ## Tests
 
 ```bash
-cd backend  && make test     # 235 tests (+2 opt-in), 85% coverage
-cd frontend && npm test      # 41 tests
+cd backend  && make test     # 290 tests (+4 opt-in), 85% coverage
+cd frontend && npm test      # 44 tests
 ```
 
-276 tests in total. The ones that carry weight: the checkpoint cutoff is
+334 tests in total. The ones that carry weight: the checkpoint cutoff is
 verified against the raw data with an independent recomputation; SHAP
 explanations are checked to reconstruct the model's own output, so they are
 faithful rather than decorative; more engagement is asserted never to raise a

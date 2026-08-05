@@ -391,3 +391,168 @@ def test_openapi_schema_documents_every_endpoint(client):
 
 def test_interactive_docs_are_served(client):
     assert client.get("/docs").status_code == 200
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Cohort endpoints — the roster the dashboard reads
+#
+# These were added after a real deployment surfaced the gap: the dashboard
+# called /overview, /students and /courses, all of which 404'd, because the
+# backend only ever scored payloads it was handed. Every request the frontend
+# client makes is now covered here so that mismatch cannot recur silently.
+# ══════════════════════════════════════════════════════════════════════════
+
+def test_every_endpoint_the_frontend_calls_exists(client):
+    """Guards the exact contract in frontend/src/lib/api/client.ts."""
+    assert client.get("/api/v1/courses").status_code == 200
+    assert client.get("/api/v1/students?page=1").status_code == 200
+    assert client.get("/api/v1/overview").status_code == 200
+    roster = client.get("/api/v1/students").json()
+    first_id = roster["students"][0]["id"]
+    assert client.get(f"/api/v1/students/{first_id}").status_code == 200
+
+
+def test_courses_have_a_checkpoint_inside_the_course_length(client):
+    for course in client.get("/api/v1/courses").json():
+        assert 0 < course["checkpointDay"] < course["lengthDays"]
+        assert course["code"] and course["title"]
+
+
+def test_roster_is_paginated(client):
+    body = client.get("/api/v1/students?page=1").json()
+    assert set(body) == {"students", "total", "page", "pageSize"}
+    assert len(body["students"]) == body["pageSize"]
+    assert body["total"] > body["pageSize"]
+
+
+def test_pages_do_not_overlap_and_cover_everyone(client):
+    first = client.get("/api/v1/students?page=1").json()
+    pages = -(-first["total"] // first["pageSize"])
+    seen = []
+    for page in range(1, pages + 1):
+        seen += [s["id"] for s in client.get(f"/api/v1/students?page={page}").json()["students"]]
+    assert len(seen) == first["total"]
+    assert len(set(seen)) == first["total"]
+
+
+def test_page_past_the_end_is_empty_rather_than_an_error(client):
+    body = client.get("/api/v1/students?page=9999").json()
+    assert body["students"] == []
+    assert body["total"] > 0
+
+
+def test_roster_is_sorted_by_risk_by_default(client):
+    scores = [s["riskScore"] for s in client.get("/api/v1/students").json()["students"]]
+    assert scores == sorted(scores, reverse=True)
+
+
+@pytest.mark.parametrize("sort_by,key,reverse", [
+    ("name", "name", False),
+    ("lastActive", "lastActiveDaysAgo", True),
+    ("risk", "riskScore", True),
+])
+def test_roster_sorting_options(client, sort_by, key, reverse):
+    values = [s[key] for s in client.get(f"/api/v1/students?sortBy={sort_by}").json()["students"]]
+    assert values == sorted(values, reverse=reverse)
+
+
+@pytest.mark.parametrize("band", ["Low", "Medium", "High"])
+def test_roster_filters_by_risk_band(client, band):
+    body = client.get(f"/api/v1/students?riskBand={band}").json()
+    assert all(s["riskBand"] == band for s in body["students"])
+    assert body["total"] <= client.get("/api/v1/students").json()["total"]
+
+
+def test_roster_filters_by_course(client):
+    code = client.get("/api/v1/courses").json()[0]["code"]
+    body = client.get(f"/api/v1/students?course={code}").json()
+    assert body["total"] > 0
+    assert all(s["courseCode"] == code for s in body["students"])
+
+
+def test_filters_combine_rather_than_override(client):
+    code = client.get("/api/v1/courses").json()[0]["code"]
+    body = client.get(f"/api/v1/students?course={code}&riskBand=Low").json()
+    assert all(s["courseCode"] == code and s["riskBand"] == "Low" for s in body["students"])
+
+
+def test_all_is_treated_as_no_filter(client):
+    total = client.get("/api/v1/students").json()["total"]
+    assert client.get("/api/v1/students?course=all&riskBand=all").json()["total"] == total
+
+
+def test_search_matches_name_and_id_case_insensitively(client):
+    target = client.get("/api/v1/students").json()["students"][0]
+    by_name = client.get(f"/api/v1/students?search={target['name'].upper()}").json()
+    assert any(s["id"] == target["id"] for s in by_name["students"])
+    by_id = client.get(f"/api/v1/students?search={target['id']}").json()
+    assert any(s["id"] == target["id"] for s in by_id["students"])
+
+
+def test_search_with_no_matches_returns_empty(client):
+    body = client.get("/api/v1/students?search=zzzz-no-such-student").json()
+    assert body["students"] == [] and body["total"] == 0
+
+
+def test_student_detail_matches_the_roster_row(client):
+    """The detail page must never contradict the row the advisor clicked."""
+    summary = client.get("/api/v1/students").json()["students"][0]
+    detail = client.get(f"/api/v1/students/{summary['id']}").json()
+    assert detail["riskScore"] == summary["riskScore"]
+    assert detail["riskBand"] == summary["riskBand"]
+    assert detail["name"] == summary["name"]
+
+
+def test_student_detail_carries_the_fields_the_page_renders(client):
+    detail = client.get("/api/v1/students").json()["students"][0]
+    detail = client.get(f"/api/v1/students/{detail['id']}").json()
+    for key in ["topFactors", "activity", "avgEarlyScore", "onTimeRate", "totalClicks",
+                "activeDays", "registeredDay", "checkpointUsed", "modelVersion"]:
+        assert key in detail, f"detail missing {key}"
+    assert detail["topFactors"]
+
+
+def test_unknown_student_returns_404(client):
+    assert client.get("/api/v1/students/S-does-not-exist").status_code == 404
+
+
+def test_overview_counts_reconcile_with_the_roster(client):
+    overview = client.get("/api/v1/overview").json()
+    assert sum(overview["counts"].values()) == overview["total"]
+    assert overview["total"] == client.get("/api/v1/students").json()["total"]
+
+
+def test_overview_attention_list_is_the_highest_risk_students(client):
+    overview = client.get("/api/v1/overview").json()
+    scores = [s["riskScore"] for s in overview["needsAttention"]]
+    assert scores == sorted(scores, reverse=True)
+    assert scores[0] == client.get("/api/v1/students").json()["students"][0]["riskScore"]
+
+
+def test_overview_course_breakdown_bars_add_up(client):
+    for row in client.get("/api/v1/overview").json()["byCourse"]:
+        assert row["high"] + row["medium"] + row["low"] == row["total"]
+
+
+def test_every_roster_student_has_a_ribbon_spanning_the_checkpoint(client):
+    """The engagement ribbon needs weeks on both sides of the checkpoint —
+    that split is the whole visual idea."""
+    for s in client.get("/api/v1/students").json()["students"]:
+        assert any(a["beforeCheckpoint"] for a in s["activity"])
+        assert any(not a["beforeCheckpoint"] for a in s["activity"])
+
+
+def test_roster_risk_bands_agree_with_their_scores(client, config):
+    bands = config["risk_bands"]
+    for s in client.get("/api/v1/students").json()["students"]:
+        score = s["riskScore"]
+        expected = "Low" if score <= bands["low_max"] else "Medium" if score <= bands["medium_max"] else "High"
+        assert s["riskBand"] == expected
+
+
+def test_roster_explanations_never_name_demographics(client):
+    import re
+    banned = re.compile(r"\b(gender|male|female|region|disability|age|deprivation)\b", re.I)
+    for s in client.get("/api/v1/students").json()["students"]:
+        for factor in s["topFactors"]:
+            assert not banned.search(factor["text"]), factor["text"]

@@ -33,7 +33,7 @@ logger = logging.getLogger("edu02-api")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
 
-_state = {"model": None, "metadata": None, "explainer": None, "config": None}
+_state = {"model": None, "metadata": None, "explainer": None, "config": None, "cohort": None}
 
 
 @asynccontextmanager
@@ -53,8 +53,18 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Model artifact not found at %s — run `python -m src.models.train` first.", model_path)
 
+    # Roster served to the dashboard; independent of the model artifact, so a
+    # missing cohort degrades only the dashboard endpoints, not /predict.
+    cohort_path = PROJECT_ROOT / "models" / "artifacts" / "demo_cohort.json"
+    if cohort_path.exists():
+        _state["cohort"] = json.load(open(cohort_path))
+        logger.info("Loaded cohort: %d students", len(_state["cohort"]["students"]))
+    else:
+        logger.warning("Cohort not found at %s — dashboard endpoints will return 503. "
+                       "Run `python -m src.data.build_demo_cohort`.", cohort_path)
+
     yield
-    _state.update({"model": None, "metadata": None, "explainer": None})
+    _state.update({"model": None, "metadata": None, "explainer": None, "cohort": None})
 
 
 app = FastAPI(
@@ -184,3 +194,112 @@ def predict_batch(payload: BatchPredictRequest):
             logger.exception("Batch prediction failed for student %s", student.student_id)
             raise HTTPException(status_code=422, detail=f"Could not score student {student.student_id}: {e}")
     return BatchPredictResponse(predictions=predictions)
+
+
+# ── Cohort endpoints ──────────────────────────────────────────────────────
+#
+# These serve the advisor dashboard. The prediction endpoints above score a
+# payload the caller supplies; they have no notion of "the current cohort".
+# The dashboard needs a roster to display, so these read a pre-computed
+# artifact (models/artifacts/demo_cohort.json) built by
+# `python -m src.data.build_demo_cohort`: real held-out students, real
+# early-course features cut at the checkpoint, scored by this same model and
+# explained with the same SHAP path as /predict. Only the names are fictional,
+# because OULAD is anonymised.
+#
+# In a real deployment this is where an institutional student database would
+# be queried instead. The response shapes would not change.
+
+PAGE_SIZE = 12
+
+
+def _require_cohort():
+    if _state["cohort"] is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Cohort data not available. Run `python -m src.data.build_demo_cohort` "
+                   "and redeploy, or point this endpoint at your student database.",
+        )
+    return _state["cohort"]
+
+
+@app.get("/api/v1/courses")
+def list_courses():
+    return _require_cohort()["courses"]
+
+
+@app.get("/api/v1/students")
+def list_students(
+    course: str | None = None,
+    riskBand: str | None = None,
+    search: str | None = None,
+    page: int = 1,
+    sortBy: str = "risk",
+):
+    cohort = _require_cohort()
+    rows = list(cohort["students"])
+
+    if course and course != "all":
+        rows = [s for s in rows if s["courseCode"] == course]
+    if riskBand and riskBand != "all":
+        rows = [s for s in rows if s["riskBand"] == riskBand]
+    if search and search.strip():
+        q = search.strip().lower()
+        rows = [s for s in rows if q in s["name"].lower() or q in s["id"].lower()]
+
+    if sortBy == "name":
+        rows.sort(key=lambda s: s["name"])
+    elif sortBy == "lastActive":
+        rows.sort(key=lambda s: s["lastActiveDaysAgo"], reverse=True)
+    else:
+        rows.sort(key=lambda s: s["riskScore"], reverse=True)
+
+    page = max(1, page)
+    start = (page - 1) * PAGE_SIZE
+    return {
+        "students": rows[start:start + PAGE_SIZE],
+        "total": len(rows),
+        "page": page,
+        "pageSize": PAGE_SIZE,
+    }
+
+
+@app.get("/api/v1/students/{student_id}")
+def get_student(student_id: str):
+    cohort = _require_cohort()
+    for student in cohort["students"]:
+        if student["id"] == student_id:
+            return student
+    raise HTTPException(status_code=404, detail=f"No student with id {student_id}")
+
+
+@app.get("/api/v1/overview")
+def overview():
+    cohort = _require_cohort()
+    students = cohort["students"]
+
+    counts = {"Low": 0, "Medium": 0, "High": 0}
+    for s in students:
+        counts[s["riskBand"]] += 1
+
+    needs_attention = sorted(students, key=lambda s: s["riskScore"], reverse=True)[:5]
+
+    by_course = []
+    for course in cohort["courses"]:
+        in_course = [s for s in students if s["courseCode"] == course["code"]]
+        if not in_course:
+            continue
+        by_course.append({
+            "course": course,
+            "total": len(in_course),
+            "high": sum(1 for s in in_course if s["riskBand"] == "High"),
+            "medium": sum(1 for s in in_course if s["riskBand"] == "Medium"),
+            "low": sum(1 for s in in_course if s["riskBand"] == "Low"),
+        })
+
+    return {
+        "counts": counts,
+        "total": len(students),
+        "needsAttention": needs_attention,
+        "byCourse": by_course,
+    }

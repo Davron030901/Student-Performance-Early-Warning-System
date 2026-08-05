@@ -165,7 +165,7 @@ backend/
 │   │   ├── explain.py                    # SHAP → plain-language factors
 │   │   └── fairness.py                   # per-group recall/precision
 │   └── api/                              # FastAPI service
-├── tests/                                # 235 tests: leakage, features, models, API, deploy
+├── tests/                                # 290 tests: leakage, features, models, API, cohort, deploy
 ├── reports/                              # generated metrics and plots
 └── models/artifacts/                     # model.joblib + metadata.json
 ```
@@ -173,8 +173,8 @@ backend/
 ## Testing
 
 ```bash
-make test                  # 235 tests, ~2 min
-pytest -m slow             # + 2 full-training integration tests, ~1 min
+make test                  # 290 tests, ~2.5 min
+pytest -m slow             # + 4 heavier integration tests, ~2 min
 pytest --cov=src           # coverage report
 ```
 
@@ -189,9 +189,20 @@ pytest --cov=src           # coverage report
 | `test_api.py` | All four endpoints: contracts, determinism, monotonicity, batch, every validation rule |
 | `test_deployment.py` | 503 when the artifact is missing, CORS allow/deny, Docker and Render/Vercel config |
 | `test_shap_and_errors.py` | SHAP additivity against the real model, checkpoint sweep, internal error handling |
+| `test_cohort.py` | The roster artifact: that what the dashboard shows is internally coherent, not merely well-typed |
 
 Coverage is 85%. The uncovered remainder is almost entirely `train.main()`, the
 orchestration script, which the opt-in `-m slow` tests exercise end to end.
+
+`test_cohort.py` was added after a full audit found five defects in the cohort
+builder — which had no tests at all while producing the file the entire
+dashboard renders from. None of them threw an exception; they produced a page
+that looked correct and quietly misstated things about students (a student who
+submitted 1 of 2 assessments shown as "1/1", explanation arrows pointing
+opposite to their own text, a flagged student whose panel listed only
+reassuring factors). That is the failure mode this file exists to catch, so its
+assertions are about *coherence between what is displayed*, not shapes and
+types.
 
 Two properties are worth calling out because they are what stop this from being
 theatre:

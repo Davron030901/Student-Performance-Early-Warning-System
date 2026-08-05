@@ -63,6 +63,30 @@ feature's actual value decides what is said about it, compared against
 training-set medians stored in the model metadata. Two regression tests in
 `tests/test_api.py` hold this in place.
 
+**The displayed score is clamped to 1–99%.** A model with ~78% recall must not
+print "100% chance of not passing" beside a student's name. Rounding made that
+happen for scores above 0.995. Absolute certainty is a claim the evidence cannot
+support, and it invites reading the score as a verdict rather than a prompt to
+look more closely; "0%" reads as a guarantee in the other direction.
+
+**A genuine concern is always given a slot in the explanation, when one exists.**
+Ranking factors purely by SHAP magnitude can fill every slot with protective
+signals for a student who is nonetheless flagged — one real case showed "Strong
+engagement / Recently active" beside a 74% risk score, while the actual drivers
+(a missed assessment, an early score of 42) ranked just below the cut. The
+explanation was true and useless: it said why the student was not worse, not why
+they were on the list. Nothing is fabricated to achieve this; a factor that was
+already computed is simply protected from being displaced.
+
+**Some flagged students have no behavioural concern at all, and the interface
+does not invent one.** A small number sit just over a band boundary while
+submitting on time and engaging consistently; their risk comes from features the
+panel deliberately does not surface. Manufacturing a concern for them would put
+a false statement in front of the person deciding whether to make contact. This
+is a real limitation of an explanation surface restricted to actionable
+behavioural signals, and it is the right trade-off, but it means a small
+fraction of flags arrive without a stated reason.
+
 **Demographics are excluded from explanations.** The model uses demographic
 features, but `src/models/explain.py` restricts advisor-facing "top factors" to
 behavioural and academic signals only. Telling an advisor that a student's region

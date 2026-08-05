@@ -8,6 +8,10 @@ data:            ## generate the synthetic OULAD-schema dataset into data/raw/
 
 train:           ## run the full pipeline: features -> baselines -> model -> reports -> artifact
 	python -m src.models.train
+	$(MAKE) cohort
+
+cohort:          ## score a real held-out cohort into models/artifacts/demo_cohort.json (served to the dashboard)
+	python -m src.data.build_demo_cohort
 
 test:
 	python -m pytest tests/ -v

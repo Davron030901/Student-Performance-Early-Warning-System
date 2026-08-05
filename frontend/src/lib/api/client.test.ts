@@ -317,3 +317,33 @@ describe("advisor-facing language", () => {
     for (const band of BANDS) expect(RISK_LABEL[band]).toBeTruthy();
   });
 });
+
+describe("presented risk score", () => {
+  // The dashboard clamps the displayed percentage to 1–99. A model that misses
+  // roughly one struggling student in five must not print "100% chance of not
+  // passing" beside someone's name: that is a claim of certainty the evidence
+  // cannot support, and it turns a prompt-to-look into a verdict. "0%" reads as
+  // a guarantee in the other direction.
+  const display = (score: number) => Math.min(99, Math.max(1, Math.round(score * 100)));
+
+  it("never displays absolute certainty in either direction", () => {
+    for (const score of [0, 0.0001, 0.004, 0.996, 0.998, 1]) {
+      const shown = display(score);
+      expect(shown).toBeGreaterThanOrEqual(1);
+      expect(shown).toBeLessThanOrEqual(99);
+    }
+  });
+
+  it("leaves ordinary scores untouched", () => {
+    expect(display(0.5)).toBe(50);
+    expect(display(0.742)).toBe(74);
+    expect(display(0.33)).toBe(33);
+  });
+
+  it("keeps every mock student inside the honest display range", () => {
+    for (const s of STUDENTS) {
+      expect(display(s.riskScore)).toBeGreaterThanOrEqual(1);
+      expect(display(s.riskScore)).toBeLessThanOrEqual(99);
+    }
+  });
+});
