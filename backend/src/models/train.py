@@ -36,6 +36,7 @@ from src.models.explain import (
     compute_shap_values, save_global_importance_plot, behavioural_reference_medians,
 )
 from src.models.fairness import fairness_report
+from src.models.tracking import track_run
 
 HELD_OUT_PRESENTATION = "2014J"  # most recent presentation -> generalization test
 
@@ -134,12 +135,30 @@ def main():
     config = yaml.safe_load(open("config/config.yaml"))
     raw = load_raw_tables(config)
 
+    with track_run("full-training-pipeline") as run:
+        _run_pipeline(config, raw, run)
+
+
+def _run_pipeline(config, raw, run):
+
     print("=" * 70)
     print("1. Building dataset at the primary checkpoint")
     print("=" * 70)
     primary_fraction = config["prediction"]["checkpoint_fraction"]
     X, y, feature_columns, meta = build_dataset(raw, config, checkpoint_fraction=primary_fraction)
     print(f"Checkpoint: {primary_fraction:.0%} of course length | rows={len(X)} | positive rate={y.mean():.3f}")
+    run.log_params(
+        checkpoint_fraction=primary_fraction,
+        held_out_presentation=HELD_OUT_PRESENTATION,
+        primary_model=config["model"]["primary"],
+        random_state=config["model"]["random_state"],
+        n_folds=config["model"]["n_folds"],
+        n_rows=len(X),
+        n_features=len(feature_columns),
+        at_risk_outcomes=",".join(config["target"]["at_risk_outcomes"]),
+        **{f"xgb_{k}": v for k, v in config["model"]["xgboost_params"].items()},
+    )
+    run.log_metrics(prefix="dataset_", positive_rate=float(y.mean()))
 
     X_enc, model_feature_columns = encode_features(X, feature_columns)
     is_held_out = (X["code_presentation"] == HELD_OUT_PRESENTATION).values
@@ -154,6 +173,7 @@ def main():
     print("=" * 70)
     trivial = evaluate_trivial_baseline(X_test_raw, y_test)
     print("Trivial rule (zero submissions -> at risk), held-out set:", trivial)
+    run.log_metrics(prefix="baseline_trivial_", **trivial)
 
     lr_pipeline_metrics = cross_validate_model(
         lambda: __import__("sklearn.pipeline", fromlist=["Pipeline"]).Pipeline([
@@ -164,6 +184,7 @@ def main():
         config["model"]["n_folds"], config["model"]["random_state"],
     )
     print("Logistic Regression baseline, CV on train pool:", lr_pipeline_metrics)
+    run.log_metrics(prefix="baseline_logreg_cv_", **lr_pipeline_metrics)
 
     print("\n" + "=" * 70)
     print("3. Main models — cross-validated on the training pool")
@@ -175,10 +196,12 @@ def main():
                                    X_train, y_train, groups_train,
                                    config["model"]["n_folds"], config["model"]["random_state"])
     print("XGBoost, CV on train pool:", xgb_cv)
+    run.log_metrics(prefix="xgboost_cv_", **xgb_cv)
 
     rf_cv = cross_validate_model(lambda: make_rf_model(config), X_train, y_train, groups_train,
                                   config["model"]["n_folds"], config["model"]["random_state"])
     print("Random Forest, CV on train pool:", rf_cv)
+    run.log_metrics(prefix="random_forest_cv_", **rf_cv)
 
     print("\n" + "=" * 70)
     print("4. Selected model: XGBoost — evaluated on the HELD-OUT presentation")
@@ -189,6 +212,7 @@ def main():
     test_pred = (test_proba >= 0.5).astype(int)
     held_out_metrics = metrics_from_predictions(y_test, test_pred, test_proba)
     print("Held-out metrics:", held_out_metrics)
+    run.log_metrics(prefix="held_out_", **held_out_metrics)
     cm = confusion_matrix(y_test, test_pred).tolist()
     print("Confusion matrix [[TN,FP],[FN,TP]]:", cm)
 
@@ -217,6 +241,9 @@ def main():
         checkpoint_results.append(r)
         print(f"checkpoint={frac:.0%} -> recall={r['recall']} precision={r['precision']} "
               f"f2={r['f2']} roc_auc={r['roc_auc']}")
+        run.log_metrics(prefix=f"checkpoint_{int(frac*100)}pct_",
+                        recall=r["recall"], precision=r["precision"],
+                        f2=r["f2"], roc_auc=r["roc_auc"])
     pd.DataFrame(checkpoint_results).to_csv(
         Path(config["paths"]["reports_dir"]) / "checkpoint_comparison.csv", index=False
     )
@@ -266,6 +293,13 @@ def main():
     }
     with open(config["paths"]["metadata_artifact"], "w") as f:
         json.dump(metadata, f, indent=2, default=str)
+
+    for artifact in [model_path, config["paths"]["metadata_artifact"],
+                     Path(config["paths"]["reports_dir"]) / "checkpoint_comparison.csv",
+                     Path(config["paths"]["reports_dir"]) / "fairness_report.csv",
+                     Path(config["paths"]["reports_dir"]) / "calibration.png",
+                     Path(config["paths"]["reports_dir"]) / "shap_global_importance.png"]:
+        run.log_artifact(artifact)
 
     print(f"\nSaved model artifact -> {model_path}")
     print(f"Saved metadata -> {config['paths']['metadata_artifact']}")

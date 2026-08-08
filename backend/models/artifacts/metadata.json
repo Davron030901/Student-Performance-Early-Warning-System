@@ -1,6 +1,6 @@
 {
   "model_version": "xgb-v1.0",
-  "trained_at": "2026-08-04 16:32:30 UTC",
+  "trained_at": "2026-08-06 05:12:33 UTC",
   "checkpoint_fraction": 0.3,
   "feature_columns": [
     "gender",

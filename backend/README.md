@@ -165,7 +165,7 @@ backend/
 │   │   ├── explain.py                    # SHAP → plain-language factors
 │   │   └── fairness.py                   # per-group recall/precision
 │   └── api/                              # FastAPI service
-├── tests/                                # 290 tests: leakage, features, models, API, cohort, deploy
+├── tests/                                # 299 tests: leakage, features, models, API, cohort, tracking, deploy
 ├── reports/                              # generated metrics and plots
 └── models/artifacts/                     # model.joblib + metadata.json
 ```
@@ -173,7 +173,7 @@ backend/
 ## Testing
 
 ```bash
-make test                  # 290 tests, ~2.5 min
+make test                  # 299 tests, ~2.5 min
 pytest -m slow             # + 4 heavier integration tests, ~2 min
 pytest --cov=src           # coverage report
 ```
@@ -190,6 +190,7 @@ pytest --cov=src           # coverage report
 | `test_deployment.py` | 503 when the artifact is missing, CORS allow/deny, Docker and Render/Vercel config |
 | `test_shap_and_errors.py` | SHAP additivity against the real model, checkpoint sweep, internal error handling |
 | `test_cohort.py` | The roster artifact: that what the dashboard shows is internally coherent, not merely well-typed |
+| `test_tracking.py` | Experiment tracking, including that a tracker failure can never lose a training run |
 
 Coverage is 85%. The uncovered remainder is almost entirely `train.main()`, the
 orchestration script, which the opt-in `-m slow` tests exercise end to end.
@@ -211,6 +212,20 @@ theatre:
   output, so they are faithful rather than decorative.
 - **Monotonicity** — piling on good signals must never raise a student's risk,
   asserted through the live API.
+
+## Experiment tracking
+
+Every `make train` run is recorded — parameters, metrics and the resulting
+artifacts — so any reported number traces back to the configuration that
+produced it. The last run logged 13 parameters, 53 metrics (baselines, CV,
+held-out, and the full checkpoint sweep) and 6 artifacts.
+
+MLflow is used when installed (`mlflow ui` to browse). It is deliberately
+absent from `requirements-api.txt`, since tracking is a training-time concern
+and the deployed container has no business carrying it. Without MLflow, runs
+append to `reports/experiments.jsonl` instead — same fields, no dependencies,
+still diffable. Tracking failures degrade to the fallback rather than losing a
+model that was just trained.
 
 ## Reproducing
 

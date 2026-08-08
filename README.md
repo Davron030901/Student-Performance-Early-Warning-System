@@ -72,11 +72,11 @@ and tested rather than asserted:
 ## Tests
 
 ```bash
-cd backend  && make test     # 290 tests (+4 opt-in), 85% coverage
+cd backend  && make test     # 299 tests (+4 opt-in), 85% coverage
 cd frontend && npm test      # 44 tests
 ```
 
-334 tests in total. The ones that carry weight: the checkpoint cutoff is
+343 tests in total. The ones that carry weight: the checkpoint cutoff is
 verified against the raw data with an independent recomputation; SHAP
 explanations are checked to reconstruct the model's own output, so they are
 faithful rather than decorative; more engagement is asserted never to raise a
@@ -107,3 +107,4 @@ container ever ships without the model artifact.
 | [`frontend/README.md`](frontend/README.md) | Setup, screens, connecting the API |
 | [`frontend/DESIGN.md`](frontend/DESIGN.md) | Palette, type, the ribbon, language |
 | [`DEPLOY.md`](DEPLOY.md) | Deploying to Render + Vercel, or everything on Vercel alone |
+| [`EDU-02-Completed-Brief.docx`](EDU-02-Completed-Brief.docx) | The client brief with Sections 5, 6 and 11 completed |
